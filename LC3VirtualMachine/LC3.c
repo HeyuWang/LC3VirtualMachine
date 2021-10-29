@@ -263,11 +263,18 @@ int main(int argc, const char *argv[]) {
             }
                 break;
             case OP_BR: {
-                uint16_t negativeFlag = (instr >> 11) & 0x1;
-                uint16_t zeroFlag = (instr >> 10) & 0x1;
-                uint16_t positiveFlag = (instr >> 9) & 0x1;
-                if (negativeFlag || zeroFlag || positiveFlag) {
-                    reg[R_PC] = reg[R_PC] + sign_extend(instr & 0x1FF, 9);
+//                uint16_t negativeFlag = (instr >> 11) & 0x1;
+//                uint16_t zeroFlag = (instr >> 10) & 0x1;
+//                uint16_t positiveFlag = (instr >> 9) & 0x1;
+//                if (negativeFlag || zeroFlag || positiveFlag) {
+//                    reg[R_PC] = reg[R_PC] + sign_extend(instr & 0x1FF, 9);
+//                }
+
+                uint16_t pc_offset = sign_extend(instr & 0x1FF, 9);
+                uint16_t cond_flag = (instr >> 9) & 0x7;
+                if (cond_flag & reg[R_COND])
+                {
+                    reg[R_PC] += pc_offset;
                 }
             }
                 break;
@@ -280,7 +287,7 @@ int main(int argc, const char *argv[]) {
                 uint16_t long_flag = (instr >> 11) & 0x1;
                 reg[R_R7] = reg[R_PC];
                 if (long_flag) {
-                    reg[R_PC] += sign_extend(instr & 0x7FF, 12);
+                    reg[R_PC] += sign_extend(instr & 0x7FF, 11);
                 } else {
                     uint16_t BaseR = (instr >> 6) & 0x7;
                     reg[R_PC] = reg[BaseR];
@@ -309,7 +316,7 @@ int main(int argc, const char *argv[]) {
 
                 //load relative = load base+offset
             case OP_LDR: {
-                uint16_t DR = (instr >> 9) & 0x3;
+                uint16_t DR = (instr >> 9) & 0x7;
                 uint16_t BaseR = (instr >> 6) & 0x7;
                 uint16_t offset6 = sign_extend(instr & 0x3F, 6);
 
@@ -352,16 +359,17 @@ int main(int argc, const char *argv[]) {
                 //system call
             case OP_TRAP: {
                 switch (instr & 0xFF) {
-                    case TRAP_GETC: {
-                        char c = getchar();
-                        reg[R_R0] = (uint16_t) c;
-                    }
+                    case TRAP_GETC:
+                        /* TRAP GETC */
+                        /* read a single ASCII char */
+                        reg[R_R0] = (uint16_t)getchar();
+
                         break;
-                    case TRAP_OUT: {
-                        char c = reg[R_R0];
-                        putc(c, stdout);
+                    case TRAP_OUT:
+                        /* TRAP OUT */
+                        putc((char)reg[R_R0], stdout);
                         fflush(stdout);
-                    }
+
                         break;
                     case TRAP_PUTS: {
                         /* one char per word */
@@ -374,15 +382,31 @@ int main(int argc, const char *argv[]) {
                     }
                         break;
                     case TRAP_IN: {
-                        putc(promotion, stdout);
+//                        putc(promotion, stdout);
+                        printf("Enter a character: ");
                         char c = getchar();
                         putc(c, stdout);
                         reg[R_R0] = (uint16_t) c;
-                        fflush(stdout);
+//                        fflush(stdout);
                     }
                         break;
                     case TRAP_PUTSP: {
-                        uint16_t *c = memory + reg[R_R0];
+                        /* one char per byte (two bytes per word)
+       here we need to swap back to
+       big endian format */
+                        uint16_t* c = memory + reg[R_R0];
+                        while (*c)
+                        {
+                            char char1 = (*c) & 0xFF;
+                            putc(char1, stdout);
+                            char char2 = (*c) >> 8;
+                            if (char2) putc(char2, stdout);
+                            ++c;
+                        }
+                        fflush(stdout);
+
+
+                        /*uint16_t *c = memory + reg[R_R0];
                         char c1 = (*c) & 0xFF, c2 = (*c >> 8);
                         while (c1 && c2) {
                             putc(c1, stdout);
@@ -397,7 +421,7 @@ int main(int argc, const char *argv[]) {
                             putc(c1, stdout);
                             putc(0x00, stdout);
                         }
-                        fflush(stdout);
+                        fflush(stdout);*/
                     }
                         break;
                     case TRAP_HALT: {
@@ -409,9 +433,7 @@ int main(int argc, const char *argv[]) {
                 }
 
 
-                reg[R_R7] = reg[R_PC]++;
-                uint16_t trapvect8 = instr & 0xFF;
-                reg[R_PC] = mem_read(trapvect8);
+
             }
                 break;
                 //return from interrupt
@@ -419,6 +441,7 @@ int main(int argc, const char *argv[]) {
             case OP_RTI:
             default: {
                 //ignore
+                abort();
             }
                 break;
         }
